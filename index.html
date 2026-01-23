@@ -1216,9 +1216,8 @@ footer {
 </footer>
 
 <script>
-// State management
 // Configuration - IMPORTANT: Change this to your actual Render URL
-const API_BASE_URL = 'https://your-app-name.onrender.com/api';
+const API_BASE_URL = 'https://127.0.0.1:5000/api'; // CHANGE TO YOUR BACKEND URL
 
 // State management
 let currentState = {
@@ -1231,28 +1230,38 @@ let currentState = {
 };
 
 // Theme management
-if (localStorage.getItem('theme') === 'light') {
-    document.body.classList.add('light-theme');
-    updateThemeButton();
+function initTheme() {
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    const button = document.querySelector('.theme-toggle');
+    const icon = button.querySelector('i');
+    const text = button.querySelector('span');
+    
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-theme');
+        icon.className = 'fas fa-moon';
+        text.textContent = 'Dark Mode';
+    } else {
+        document.body.classList.remove('light-theme');
+        icon.className = 'fas fa-sun';
+        text.textContent = 'Light Mode';
+    }
 }
 
 function toggleTheme() {
-    document.body.classList.toggle('light-theme');
-    localStorage.setItem('theme', document.body.classList.contains('light-theme') ? 'light' : 'dark');
-    updateThemeButton();
-}
-
-function updateThemeButton() {
     const button = document.querySelector('.theme-toggle');
     const icon = button.querySelector('i');
     const text = button.querySelector('span');
     
     if (document.body.classList.contains('light-theme')) {
-        icon.className = 'fas fa-moon';
-        text.textContent = 'Dark Mode';
-    } else {
+        document.body.classList.remove('light-theme');
+        localStorage.setItem('theme', 'dark');
         icon.className = 'fas fa-sun';
         text.textContent = 'Light Mode';
+    } else {
+        document.body.classList.add('light-theme');
+        localStorage.setItem('theme', 'light');
+        icon.className = 'fas fa-moon';
+        text.textContent = 'Dark Mode';
     }
 }
 
@@ -1269,6 +1278,9 @@ function showSection(sectionId) {
     // Update nav links
     document.querySelectorAll('.nav-links a').forEach(link => {
         link.classList.remove('active');
+        if (link.getAttribute('href') === '#' + sectionId) {
+            link.classList.add('active');
+        }
     });
     
     // Reset to step 1 if going to home
@@ -1286,7 +1298,7 @@ function updateSteps(stepNumber) {
     
     // Update steps based on current step
     for (let i = 1; i <= 3; i++) {
-        const step = document.getElementById('step' + i);
+        const step = document.querySelector(`.step[data-step="${i}"]`);
         if (i < stepNumber) {
             step.classList.add('completed');
         } else if (i === stepNumber) {
@@ -1301,6 +1313,12 @@ function resetToStep1() {
     document.getElementById('videoInfoSection').style.display = 'none';
     document.getElementById('downloadOptionsSection').style.display = 'none';
     document.getElementById('videoUrl').value = '';
+    
+    // Reset selected formats
+    document.querySelectorAll('.format-card.selected').forEach(card => {
+        card.classList.remove('selected');
+    });
+    
     currentState = {
         url: '',
         platform: '',
@@ -1322,21 +1340,26 @@ function setExample(platform) {
         whatsapp: 'https://web.whatsapp.com/status/123456789'
     };
     
-    document.getElementById('videoUrl').value = examples[platform];
-    currentState.platform = platform;
+    if (examples[platform]) {
+        document.getElementById('videoUrl').value = examples[platform];
+        currentState.platform = platform;
+    }
 }
 
 // Fetch video info from backend
 async function fetchVideoInfo() {
-    const url = document.getElementById('videoUrl').value.trim();
+    const urlInput = document.getElementById('videoUrl');
+    const url = urlInput.value.trim();
     
     if (!url) {
         showError('Please enter a video URL');
+        urlInput.focus();
         return;
     }
     
     if (!isValidUrl(url)) {
         showError('Please enter a valid URL');
+        urlInput.focus();
         return;
     }
     
@@ -1348,21 +1371,18 @@ async function fetchVideoInfo() {
     progressContainer.style.display = 'block';
     progressBar.style.width = '0%';
     fetchBtn.disabled = true;
-    fetchBtn.innerHTML = '<span class="loader"></span> Analyzing Video...';
+    fetchBtn.innerHTML = '<span class="loader"></span> Analyzing...';
     
     try {
-        // Simulate progress for better UX
+        // Simulate progress
         let progress = 0;
         const progressInterval = setInterval(() => {
             progress += 5;
             progressBar.style.width = progress + '%';
-            
-            if (progress >= 80) {
-                clearInterval(progressInterval);
-            }
+            if (progress >= 80) clearInterval(progressInterval);
         }, 100);
         
-        // Call backend API - IMPORTANT: Change the endpoint if needed
+        // Call backend API
         const response = await fetch(`${API_BASE_URL}/analyze`, {
             method: 'POST',
             headers: {
@@ -1374,21 +1394,21 @@ async function fetchVideoInfo() {
         clearInterval(progressInterval);
         progressBar.style.width = '100%';
         
-        const data = await response.json();
-        
         if (!response.ok) {
-            throw new Error(data.error || data.message || 'Failed to analyze video');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to analyze video');
         }
         
-        // Check if video_info exists in response
-        if (!data.video_info) {
-            throw new Error('Invalid response from server');
+        const data = await response.json();
+        
+        if (!data.success) {
+            throw new Error(data.error || 'Failed to analyze video');
         }
         
         // Update UI with video info
         displayVideoInfo(data.video_info);
         
-        // Store video info for later use
+        // Store video info
         currentState.videoInfo = data.video_info;
         currentState.url = url;
         currentState.platform = detectPlatform(url);
@@ -1408,17 +1428,19 @@ async function fetchVideoInfo() {
     }
     
     function resetProgress() {
-        progressContainer.style.display = 'none';
-        fetchBtn.disabled = false;
-        fetchBtn.innerHTML = '<i class="fas fa-search"></i><span>Analyze Video</span>';
-        progressBar.style.width = '0%';
+        if (progressContainer) progressContainer.style.display = 'none';
+        if (fetchBtn) {
+            fetchBtn.disabled = false;
+            fetchBtn.innerHTML = '<i class="fas fa-search"></i><span>Analyze Video</span>';
+        }
+        if (progressBar) progressBar.style.width = '0%';
     }
 }
 
 function isValidUrl(string) {
     try {
-        const url = new URL(string);
-        return url.protocol === 'http:' || url.protocol === 'https:';
+        new URL(string);
+        return true;
     } catch (_) {
         return false;
     }
@@ -1430,25 +1452,24 @@ function detectPlatform(url) {
     if (url.includes('tiktok.com')) return 'tiktok';
     if (url.includes('facebook.com') || url.includes('fb.watch')) return 'facebook';
     if (url.includes('twitter.com') || url.includes('x.com')) return 'twitter';
-    if (url.includes('whatsapp.com')) return 'whatsapp';
     return 'unknown';
 }
 
-// Display video info from backend
+// Display video info
 function displayVideoInfo(videoInfo) {
     // Basic info
     document.getElementById('videoTitle').textContent = videoInfo.title || 'Unknown Title';
     document.getElementById('videoDuration').textContent = videoInfo.duration || '00:00';
-    document.getElementById('videoChannel').textContent = videoInfo.uploader || 'Unknown Uploader';
-    document.getElementById('videoDate').textContent = formatDate(videoInfo.upload_date);
     
-    // Handle size
-    let totalSize = videoInfo.total_size || 0;
-    let sizeReadable = videoInfo.total_size_readable || formatFileSize(totalSize);
-    document.getElementById('videoSize').textContent = sizeReadable;
+    // Calculate total size
+    let totalSize = 0;
+    if (videoInfo.formats && videoInfo.formats.length > 0) {
+        totalSize = videoInfo.formats.reduce((sum, fmt) => sum + (fmt.filesize || 0), 0);
+    }
+    document.getElementById('videoSize').textContent = formatFileSize(totalSize);
     
     // Size progress bar
-    const maxSize = 500 * 1024 * 1024; // 500MB as max for visualization
+    const maxSize = 500 * 1024 * 1024;
     const sizePercent = Math.min((totalSize / maxSize) * 100, 100);
     document.getElementById('sizeFill').style.width = sizePercent + '%';
     
@@ -1461,7 +1482,6 @@ function displayVideoInfo(videoInfo) {
                 const res = parseInt((fmt.resolution || '0x0').split('x')[1]) || 0;
                 return res > max.res ? {res: res, fmt: fmt} : max;
             }, {res: 0, fmt: null});
-            
             maxResolution = highestRes.fmt ? (highestRes.fmt.resolution || 'Unknown') : 'Unknown';
         }
     }
@@ -1469,60 +1489,41 @@ function displayVideoInfo(videoInfo) {
     document.getElementById('videoResolution').textContent = maxResolution;
     document.getElementById('videoQuality').textContent = getQualityLabel(maxResolution);
     
-    // Set thumbnail if available
+    // Set thumbnail
     if (videoInfo.thumbnail) {
-        document.getElementById('thumbnailImg').src = videoInfo.thumbnail;
-        document.getElementById('thumbnailImg').alt = videoInfo.title || 'Video thumbnail';
-    } else if (videoInfo.thumbnails && videoInfo.thumbnails.length > 0) {
-        // Get the highest quality thumbnail
-        const bestThumb = videoInfo.thumbnails[videoInfo.thumbnails.length - 1];
-        document.getElementById('thumbnailImg').src = bestThumb.url || bestThumb;
+        const img = document.getElementById('thumbnailImg');
+        img.src = videoInfo.thumbnail;
+        img.alt = videoInfo.title || 'Video thumbnail';
+        img.onerror = function() {
+            this.src = 'https://images.unsplash.com/photo-1611162616475-46b635cb6868?w=400&h=225&fit=crop';
+        };
     }
+    
+    // Default values for missing fields
+    document.getElementById('videoChannel').textContent = videoInfo.uploader || 'Unknown Uploader';
+    document.getElementById('videoDate').textContent = videoInfo.upload_date || 'Unknown Date';
 }
 
 function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    
+    if (bytes === 0) return '0 B';
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 function getQualityLabel(resolution) {
-    if (!resolution || resolution === 'Unknown') return 'Unknown';
-    
+    if (!resolution || resolution === 'Unknown' || resolution === 'audio') return 'Unknown';
     const height = parseInt(resolution.split('x')[1]) || 0;
-    
     if (height >= 2160) return '4K Ultra HD';
     if (height >= 1440) return '2K Quad HD';
     if (height >= 1080) return 'Full HD';
     if (height >= 720) return 'HD';
     if (height >= 480) return 'SD';
-    
     return 'Low Quality';
 }
 
-function formatDate(dateStr) {
-    if (!dateStr) return 'Unknown';
-    
-    // Handle different date formats
-    if (dateStr.length === 8) {
-        // YYYYMMDD format
-        const year = dateStr.substring(0, 4);
-        const month = dateStr.substring(4, 6);
-        const day = dateStr.substring(6, 8);
-        return `${year}-${month}-${day}`;
-    } else if (dateStr.includes('-')) {
-        // Already formatted
-        return dateStr;
-    }
-    
-    return dateStr;
-}
-
-// Show download options from backend
+// Show download options
 async function showDownloadOptions() {
     if (!currentState.url) {
         showError('Please analyze a video first');
@@ -1530,7 +1531,7 @@ async function showDownloadOptions() {
     }
     
     try {
-        // Show loading state
+        // Show loading
         const videoFormatsContainer = document.getElementById('videoFormats');
         const audioFormatsContainer = document.getElementById('audioFormats');
         
@@ -1546,10 +1547,15 @@ async function showDownloadOptions() {
             body: JSON.stringify({ url: currentState.url })
         });
         
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to fetch formats');
+        }
+        
         const data = await response.json();
         
-        if (!response.ok) {
-            throw new Error(data.error || data.message || 'Failed to fetch formats');
+        if (!data.success) {
+            throw new Error(data.error || 'Failed to fetch formats');
         }
         
         // Display download options
@@ -1573,6 +1579,14 @@ function backToVideoInfo() {
     updateSteps(2);
 }
 
+function backToUrlInput() {
+    document.getElementById('videoInfoSection').style.display = 'none';
+    document.getElementById('downloadOptionsSection').style.display = 'none';
+    document.getElementById('urlSection').style.display = 'block';
+    updateSteps(1);
+    document.getElementById('videoUrl').focus();
+}
+
 function displayDownloadOptions(data) {
     const videoFormatsContainer = document.getElementById('videoFormats');
     const audioFormatsContainer = document.getElementById('audioFormats');
@@ -1587,7 +1601,7 @@ function displayDownloadOptions(data) {
     
     // Display video formats
     if (data.video_formats && data.video_formats.length > 0) {
-        // Sort by quality (height)
+        // Sort by resolution (highest first)
         const sortedVideoFormats = data.video_formats.sort((a, b) => {
             const aHeight = parseInt((a.resolution || '0x0').split('x')[1]) || 0;
             const bHeight = parseInt((b.resolution || '0x0').split('x')[1]) || 0;
@@ -1604,14 +1618,7 @@ function displayDownloadOptions(data) {
     
     // Display audio formats
     if (data.audio_formats && data.audio_formats.length > 0) {
-        // Sort by bitrate/quality
-        const sortedAudioFormats = data.audio_formats.sort((a, b) => {
-            const aBitrate = parseInt(a.abr) || 0;
-            const bBitrate = parseInt(b.abr) || 0;
-            return bBitrate - aBitrate;
-        });
-        
-        sortedAudioFormats.forEach((format, index) => {
+        data.audio_formats.forEach((format, index) => {
             const card = createFormatCard(format, 'audio', index === 0);
             audioFormatsContainer.appendChild(card);
         });
@@ -1623,7 +1630,7 @@ function displayDownloadOptions(data) {
 function createFormatCard(format, type, isRecommended = false) {
     const card = document.createElement('div');
     card.className = 'format-card';
-    card.dataset.id = format.id;
+    card.dataset.id = format.format_id || format.id;
     card.dataset.type = type;
     
     if (isRecommended) {
@@ -1636,10 +1643,10 @@ function createFormatCard(format, type, isRecommended = false) {
     }
     
     const icon = type === 'video' ? 'fas fa-video' : 'fas fa-music';
-    const formatName = format.name || format.format_note || format.quality || 'Unknown Format';
-    const formatQuality = format.quality || format.resolution || (type === 'audio' ? (format.abr ? `${format.abr}kbps` : 'Audio') : 'Unknown');
-    const fileSize = format.size || format.filesize_readable || formatFileSize(format.filesize || 0);
-    const fileExtension = (format.ext || 'mp4').toUpperCase();
+    const name = format.format_note || format.resolution || format.name || 'Audio';
+    const quality = format.resolution || format.format_note || (format.abr ? `${format.abr}kbps` : 'Unknown');
+    const size = format.filesize_readable || format.size || 'Unknown size';
+    const ext = (format.ext || 'mp4').toUpperCase();
     
     card.innerHTML = `
         ${isRecommended ? '<div class="recommended-badge">Recommended</div>' : ''}
@@ -1648,18 +1655,18 @@ function createFormatCard(format, type, isRecommended = false) {
                 <i class="${icon}"></i>
             </div>
             <div class="format-info">
-                <h4>${formatName}</h4>
-                <p>${formatQuality}</p>
+                <h4>${ext} ${name}</h4>
+                <p>${quality}</p>
             </div>
         </div>
         <div class="format-details">
             <div class="detail">
                 <span class="label">File Size</span>
-                <span class="value">${fileSize}</span>
+                <span class="value">${size}</span>
             </div>
             <div class="detail">
-                <span class="label">${type === 'video' ? 'Format' : 'Codec'}</span>
-                <span class="value">${type === 'video' ? fileExtension : (format.acodec || 'Unknown')}</span>
+                <span class="label">${type === 'video' ? 'Codec' : 'Type'}</span>
+                <span class="value">${type === 'video' ? (format.vcodec || 'Unknown') : 'Audio'}</span>
             </div>
         </div>
     `;
@@ -1692,24 +1699,20 @@ function switchTab(tab) {
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
-    });
-    
-    // Find the clicked button
-    const buttons = document.querySelectorAll('.tab-btn');
-    buttons.forEach(btn => {
-        if (btn.textContent.toLowerCase().includes(tab)) {
+        if (btn.dataset.tab === tab) {
             btn.classList.add('active');
         }
     });
     
     // Update tab content
     document.querySelectorAll('.tab-content').forEach(content => {
-        content.classList.remove('active');
+        content.style.display = 'none';
     });
-    document.getElementById(tab + 'Tab').classList.add('active');
+    
+    document.getElementById(tab + 'Tab').style.display = 'grid';
 }
 
-// Start download from backend
+// Start download
 async function startDownload(type) {
     const selectedFormat = type === 'video' ? currentState.selectedVideoFormat : currentState.selectedAudioFormat;
     
@@ -1724,11 +1727,10 @@ async function startDownload(type) {
     }
     
     try {
-        // Show loading state
         const downloadBtn = type === 'video' ? document.getElementById('downloadVideoBtn') : document.getElementById('downloadAudioBtn');
         const originalText = downloadBtn.innerHTML;
         downloadBtn.disabled = true;
-        downloadBtn.innerHTML = '<span class="loader small"></span> Preparing...';
+        downloadBtn.innerHTML = '<span class="loader small"></span> Downloading...';
         
         // Call backend download API
         const response = await fetch(`${API_BASE_URL}/download`, {
@@ -1738,53 +1740,58 @@ async function startDownload(type) {
             },
             body: JSON.stringify({
                 url: currentState.url,
-                format_id: selectedFormat.id,
-                format_type: type
+                format_id: selectedFormat.format_id || selectedFormat.id
             })
         });
         
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Download failed');
+        }
+        
         const data = await response.json();
         
-        if (!response.ok) {
-            throw new Error(data.error || data.message || 'Download failed');
+        if (!data.success) {
+            throw new Error(data.error || 'Download failed');
         }
         
         // Show success message
-        showSuccess(`Starting download: ${selectedFormat.name || selectedFormat.format_note}`);
+        showSuccess(`Download ready: ${data.filename}`);
         
         // Create download link
-        if (data.download_url) {
+        if (data.download_url && data.filename) {
+            // Use the full URL for download
+            const baseUrl = window.location.origin;
+            const downloadUrl = data.download_url.startsWith('http') 
+                ? data.download_url 
+                : `${baseUrl}${data.download_url}`;
+            
+            console.log('Download URL:', downloadUrl);
+            
             const downloadLink = document.createElement('a');
-            
-            // Handle both absolute and relative URLs
-            let downloadUrl = data.download_url;
-            if (!downloadUrl.startsWith('http')) {
-                downloadUrl = `${API_BASE_URL.replace('/api', '')}${downloadUrl}`;
-            }
-            
             downloadLink.href = downloadUrl;
-            
-            const filename = data.filename || 
-                `${currentState.videoInfo?.title || 'video'}.${selectedFormat.ext || 'mp4'}`.replace(/[^\w\s.-]/gi, '');
-            
-            downloadLink.download = filename;
+            downloadLink.download = data.filename;
             downloadLink.style.display = 'none';
             document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
-        } else if (data.message) {
-            showSuccess(data.message);
+            
+            // Trigger download
+            setTimeout(() => {
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+            }, 100);
         }
         
         // Reset button state
-        downloadBtn.disabled = false;
-        downloadBtn.innerHTML = originalText;
-        
-        // Reset after delay
         setTimeout(() => {
-            resetToStep1();
-            showSection('home');
-        }, 3000);
+            downloadBtn.disabled = false;
+            downloadBtn.innerHTML = originalText;
+            
+            // Reset after delay
+            setTimeout(() => {
+                resetToStep1();
+                showSection('home');
+            }, 2000);
+        }, 1000);
         
     } catch (error) {
         console.error('Error:', error);
@@ -1792,16 +1799,20 @@ async function startDownload(type) {
         
         // Reset button state on error
         const downloadBtn = type === 'video' ? document.getElementById('downloadVideoBtn') : document.getElementById('downloadAudioBtn');
-        downloadBtn.disabled = false;
-        downloadBtn.innerHTML = type === 'video' 
-            ? '<i class="fas fa-download"></i> Download Video' 
-            : '<i class="fas fa-download"></i> Download Audio';
+        if (downloadBtn) {
+            downloadBtn.disabled = false;
+            downloadBtn.innerHTML = type === 'video' 
+                ? '<i class="fas fa-download"></i> Download Video' 
+                : '<i class="fas fa-download"></i> Download Audio';
+        }
     }
 }
 
 // Utility functions for showing messages
 function showError(message) {
-    // Create error toast
+    // Remove existing toasts
+    document.querySelectorAll('.toast').forEach(toast => toast.remove());
+    
     const toast = document.createElement('div');
     toast.className = 'toast error';
     toast.innerHTML = `
@@ -1811,18 +1822,22 @@ function showError(message) {
     
     document.body.appendChild(toast);
     
-    // Show toast
     setTimeout(() => toast.classList.add('show'), 10);
     
-    // Remove after 5 seconds
     setTimeout(() => {
         toast.classList.remove('show');
-        setTimeout(() => document.body.removeChild(toast), 300);
+        setTimeout(() => {
+            if (toast.parentNode) {
+                document.body.removeChild(toast);
+            }
+        }, 300);
     }, 5000);
 }
 
 function showSuccess(message) {
-    // Create success toast
+    // Remove existing toasts
+    document.querySelectorAll('.toast').forEach(toast => toast.remove());
+    
     const toast = document.createElement('div');
     toast.className = 'toast success';
     toast.innerHTML = `
@@ -1832,30 +1847,38 @@ function showSuccess(message) {
     
     document.body.appendChild(toast);
     
-    // Show toast
     setTimeout(() => toast.classList.add('show'), 10);
     
-    // Remove after 5 seconds
     setTimeout(() => {
         toast.classList.remove('show');
-        setTimeout(() => document.body.removeChild(toast), 300);
+        setTimeout(() => {
+            if (toast.parentNode) {
+                document.body.removeChild(toast);
+            }
+        }, 300);
     }, 5000);
 }
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize theme
+    initTheme();
+    
     // Set default step
     updateSteps(1);
     
     // Add enter key support for URL input
-    document.getElementById('videoUrl').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            fetchVideoInfo();
-        }
-    });
-    
-    // Set initial example
-    setExample('youtube');
+    const urlInput = document.getElementById('videoUrl');
+    if (urlInput) {
+        urlInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                fetchVideoInfo();
+            }
+        });
+        
+        // Set initial example
+        setExample('youtube');
+    }
     
     // Add CSS for toasts and loading
     const style = document.createElement('style');
@@ -1876,6 +1899,7 @@ document.addEventListener('DOMContentLoaded', function() {
             transition: transform 0.3s ease;
             z-index: 1000;
             border-left: 4px solid transparent;
+            max-width: 400px;
         }
         
         .toast.show {
@@ -1917,6 +1941,15 @@ document.addEventListener('DOMContentLoaded', function() {
             border-width: 2px;
             display: inline-block;
             margin-right: 8px;
+        }
+        
+        /* Fix for tab content display */
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: grid;
         }
     `;
     document.head.appendChild(style);
